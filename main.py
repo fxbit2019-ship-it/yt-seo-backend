@@ -1,7 +1,6 @@
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from youtube_transcript_api import YouTubeTranscriptApi
-from groq import Groq
 import os
 import re
 import requests
@@ -77,31 +76,40 @@ def generate_seo_pack(data: dict):
     title = data.get("title", "")
     transcript = data.get("transcript", "")
 
-    groq_key = os.getenv("GROQ_API_KEY")
-    if not groq_key:
-        raise HTTPException(status_code=500, detail="Groq API Key missing on Render server.")
+    gemini_key = os.getenv("GEMINI_API_KEY")
+    if not gemini_key:
+        raise HTTPException(status_code=500, detail="GEMINI_API_KEY missing in Render environment.")
+
+    prompt_text = f"""
+    You are an expert YouTube SEO consultant. Create a high-converting, viral SEO pack for this video.
+    
+    Original Video Title: {title}
+    Video Context/Transcript/Description: {transcript}
+    
+    Output requirement:
+    1. 5 High CTR Clickworthy Titles (with emojis)
+    2. Detailed SEO Optimized Description (with hashtags & timestamps structure)
+    3. 15-20 High-Volume Viral Tags (comma separated)
+    """
+
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={gemini_key}"
+    headers = {"Content-Type": "application/json"}
+    payload = {
+        "contents": [{
+            "parts": [{"text": prompt_text}]
+        }]
+    }
 
     try:
-        client = Groq(api_key=groq_key)
+        res = requests.post(url, json=payload, headers=headers, timeout=20)
+        res_data = res.json()
         
-        prompt = f"""
-        You are an expert YouTube SEO consultant. Create a high-converting, viral SEO pack for this video.
-        
-        Original Video Title: {title}
-        Video Context/Transcript/Description: {transcript}
-        
-        Output requirement:
-        1. 5 High CTR Clickworthy Titles (with emojis)
-        2. Detailed SEO Optimized Description (with hashtags & timestamps structure)
-        3. 15-20 High-Volume Viral Tags (comma separated)
-        """
-        
-        # Standard Active Model
-        response = client.chat.completions.create(
-            model="llama-3.1-8b-instant",
-            messages=[{"role": "user", "content": prompt}]
-        )
-        
-        return {"seo_pack": response.choices[0].message.content}
+        if res.status_code != 200:
+            error_msg = res_data.get("error", {}).get("message", "Gemini API call failed")
+            raise HTTPException(status_code=500, detail=f"Gemini Error: {error_msg}")
+            
+        seo_text = res_data["candidates"][0]["content"]["parts"][0]["text"]
+        return {"seo_pack": seo_text}
+
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Groq Error: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
