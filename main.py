@@ -51,12 +51,10 @@ def get_transcript(video_url: str):
     if not video_id:
         raise HTTPException(status_code=400, detail="Invalid YouTube URL")
     
-    # 1. Fetch Official Title & Description via YouTube API
     official_data = get_official_yt_details(video_id)
     video_title = official_data["title"] if official_data else f"YouTube Video ({video_id})"
     video_desc = official_data["description"] if official_data else ""
 
-    # 2. Fetch Transcript with fallbacks
     transcript_text = ""
     try:
         try:
@@ -66,7 +64,6 @@ def get_transcript(video_url: str):
             transcript_list = YouTubeTranscriptApi.list_transcripts(video_id).find_transcript(['hi', 'en']).fetch()
             transcript_text = " ".join([t['text'] for t in transcript_list])
     except Exception:
-        # Fallback to description if subtitles are disabled
         transcript_text = video_desc[:2000] if video_desc else f"Topic based on title: {video_title}"
 
     return {
@@ -80,23 +77,30 @@ def generate_seo_pack(data: dict):
     title = data.get("title", "")
     transcript = data.get("transcript", "")
 
-    client = Groq(api_key=os.getenv("GROQ_API_KEY"))
-    
-    prompt = f"""
-    You are an expert YouTube SEO consultant. Create a high-converting, viral SEO pack for this video.
-    
-    Original Video Title: {title}
-    Video Context/Transcript/Description: {transcript}
-    
-    Output requirement:
-    1. 5 High CTR Clickworthy Titles (with emojis)
-    2. Detailed SEO Optimized Description (with hashtags & timestamps structure)
-    3. 15-20 High-Volume Viral Tags (comma separated)
-    """
-    
-    response = client.chat.completions.create(
-        model="llama3-8b-8192",
-        messages=[{"role": "user", "content": prompt}]
-    )
-    
-    return {"seo_pack": response.choices[0].message.content}
+    groq_key = os.getenv("GROQ_API_KEY")
+    if not groq_key:
+        raise HTTPException(status_code=500, detail="Groq API Key missing in Render Environment.")
+
+    try:
+        client = Groq(api_key=groq_key)
+        
+        prompt = f"""
+        You are an expert YouTube SEO consultant. Create a high-converting, viral SEO pack for this video.
+        
+        Original Video Title: {title}
+        Video Context/Transcript/Description: {transcript}
+        
+        Output requirement:
+        1. 5 High CTR Clickworthy Titles (with emojis)
+        2. Detailed SEO Optimized Description (with hashtags & timestamps structure)
+        3. 15-20 High-Volume Viral Tags (comma separated)
+        """
+        
+        response = client.chat.completions.create(
+            model="llama-3.1-8b-instant",
+            messages=[{"role": "user", "content": prompt}]
+        )
+        
+        return {"seo_pack": response.choices[0].message.content}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Groq Error: {str(e)}")
