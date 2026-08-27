@@ -79,7 +79,7 @@ def generate_seo_pack(data: dict):
 
     groq_key = os.getenv("GROQ_API_KEY")
     if not groq_key:
-        raise HTTPException(status_code=500, detail="Groq API Key missing in Render Environment.")
+        raise HTTPException(status_code=500, detail="Groq API Key missing on Render server.")
 
     try:
         client = Groq(api_key=groq_key)
@@ -96,9 +96,9 @@ def generate_seo_pack(data: dict):
         3. 15-20 High-Volume Viral Tags (comma separated)
         """
         
-        # Updated active Groq model
+        # Standard Active Model
         response = client.chat.completions.create(
-            model="llama-3.3-70b-versatile",
+            model="llama-3.1-8b-instant",
             messages=[{"role": "user", "content": prompt}]
         )
         
