@@ -92,8 +92,8 @@ def generate_seo_pack(data: dict):
     3. 15-20 High-Volume Viral Tags (comma separated)
     """
 
-    # Model endpoint updated to gemini-2.5-flash for standard v1beta API
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={gemini_key}"
+    # Updated directly to gemini-3.6-flash as requested by API error message
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-3.6-flash:generateContent?key={gemini_key}"
     headers = {"Content-Type": "application/json"}
     payload = {
         "contents": [{
