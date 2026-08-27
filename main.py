@@ -1,52 +1,67 @@
-import os
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from youtube_transcript_api import YouTubeTranscriptApi
-import yt_dlp
 from groq import Groq
+import os
+import re
 
 app = FastAPI()
 
-# WordPress से API जोड़ने के लिए CORS Permission
+# CORS Allowed Links
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
+    allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-groq_client = Groq(api_key=os.environ.get("GROQ_API_KEY"))
+def extract_video_id(url: str):
+    regex = r"(?:v=|\/([0-9A-Za-z_-]{11})|youtu\.be\/)([0-9A-Za-z_-]{11})"
+    match = re.search(regex, url)
+    if match:
+        return match.group(1) or match.group(2)
+    return None
 
-def extract_video_id(url):
-    if "watch?v=" in url:
-        return url.split("watch?v=")[1].split("&")[0]
-    elif "youtu.be/" in url:
-        return url.split("youtu.be/")[1].split("?")[0]
-    return url
+@app.get("/")
+def read_root():
+    return {"status": "Backend Live"}
 
 @app.get("/api/get-transcript")
 def get_transcript(video_url: str):
     video_id = extract_video_id(video_url)
-    ydl_opts = {'quiet': True}
-    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-        info = ydl.extract_info(video_url, download=False)
-        title = info.get('title', '')
-
-    transcript_list = YouTubeTranscriptApi.get_transcript(video_id, languages=['hi', 'en'])
-    full_text = " ".join([entry['text'] for entry in transcript_list])
+    if not video_id:
+        raise HTTPException(status_code=400, detail="Invalid YouTube URL")
     
-    return {
-        "title": title,
-        "transcript": full_text[:6000]
-    }
+    try:
+        transcript_list = YouTubeTranscriptApi.get_transcript(video_id, languages=['hi', 'en'])
+        full_text = " ".join([t['text'] for t in transcript_list])
+        return {
+            "title": f"YouTube Video ({video_id})",
+            "transcript": full_text[:4000]
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/api/generate-seo-pack")
 def generate_seo_pack(data: dict):
-    transcript = data.get("transcript")
-    prompt = f"Act as a YouTube SEO Expert. Generate 5 Titles, 300-word SEO Description, Chapters, and 20 Viral Tags for this transcript: {transcript}"
+    transcript = data.get("transcript", "")
+    if not transcript:
+        raise HTTPException(status_code=400, detail="Transcript missing")
 
-    response = groq_client.chat.completions.create(
-        messages=[{"role": "user", "content": prompt}],
-        model="llama-3.3-70b-versatile",
+    client = Groq(api_key=os.getenv("GROQ_API_KEY"))
+    prompt = f"""
+    You are an expert YouTube SEO consultant. Analyze this transcript and create:
+    1. 5 High CTR Clickworthy Titles
+    2. SEO Optimized Description (with Timestamps placeholders)
+    3. 15-20 Viral Tags (comma separated)
+    
+    Transcript: {transcript}
+    """
+    
+    response = client.chat.completions.create(
+        model="llama3-8b-8192",
+        messages=[{"role": "user", "content": prompt}]
     )
+    
     return {"seo_pack": response.choices[0].message.content}
